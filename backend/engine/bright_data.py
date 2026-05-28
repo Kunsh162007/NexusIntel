@@ -112,36 +112,71 @@ class BrightDataClient:
         return results
 
     async def _fallback_serp(self, query: str) -> list[dict]:
-        """DuckDuckGo HTML search as a no-credential fallback."""
-        url = f"https://html.duckduckgo.com/html/?q={httpx.URL(query=query).query}"
+        """Bing HTML search as a no-credential fallback (more reliable from cloud IPs)."""
+        encoded = httpx.URL(query=query).query
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
-            )
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
         }
         async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
-            try:
-                resp = await client.get(url, follow_redirects=True)
-                soup = BeautifulSoup(resp.text, "lxml")
-                results = []
-                for r in soup.select(".result__body"):
-                    title_el = r.select_one(".result__title a, .result__a")
-                    link_el = r.select_one(".result__url a, .result__url")
-                    snippet_el = r.select_one(".result__snippet")
-                    if title_el:
-                        results.append(
-                            {
-                                "title": title_el.get_text(strip=True),
-                                "url": link_el.get_text(strip=True) if link_el else "",
-                                "snippet": snippet_el.get_text(strip=True) if snippet_el else "",
-                            }
-                        )
-                    if len(results) >= 10:
-                        break
+            # Try Bing first
+            results = await self._parse_bing(client, encoded)
+            if results:
                 return results
-            except Exception:
-                return []
+            # Fall back to DuckDuckGo HTML
+            return await self._parse_ddg(client, encoded)
+
+    async def _parse_bing(self, client, encoded_query: str) -> list[dict]:
+        try:
+            resp = await client.get(
+                f"https://www.bing.com/search?q={encoded_query}&count=10",
+                follow_redirects=True,
+            )
+            soup = BeautifulSoup(resp.text, "lxml")
+            results = []
+            for li in soup.select("li.b_algo"):
+                title_el = li.select_one("h2 a")
+                snippet_el = li.select_one(".b_caption p, .b_algoSlug")
+                if title_el:
+                    results.append({
+                        "title": title_el.get_text(strip=True),
+                        "url": title_el.get("href", ""),
+                        "snippet": snippet_el.get_text(strip=True) if snippet_el else "",
+                    })
+                if len(results) >= 10:
+                    break
+            return results
+        except Exception:
+            return []
+
+    async def _parse_ddg(self, client, encoded_query: str) -> list[dict]:
+        try:
+            resp = await client.get(
+                f"https://html.duckduckgo.com/html/?q={encoded_query}",
+                follow_redirects=True,
+            )
+            soup = BeautifulSoup(resp.text, "lxml")
+            results = []
+            for r in soup.select(".result__body"):
+                title_el = r.select_one(".result__title a, .result__a")
+                link_el = r.select_one(".result__url a, .result__url")
+                snippet_el = r.select_one(".result__snippet")
+                if title_el:
+                    results.append({
+                        "title": title_el.get_text(strip=True),
+                        "url": link_el.get_text(strip=True) if link_el else "",
+                        "snippet": snippet_el.get_text(strip=True) if snippet_el else "",
+                    })
+                if len(results) >= 10:
+                    break
+            return results
+        except Exception:
+            return []
 
     # ── Web Scraper API ───────────────────────────────────────────────────
 
