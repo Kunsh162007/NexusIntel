@@ -1,0 +1,187 @@
+import httpx
+import json
+import asyncio
+from typing import Optional
+from bs4 import BeautifulSoup
+import config
+
+
+class BrightDataClient:
+    """Wraps all five Bright Data products used in NexusIntel."""
+
+    def __init__(self):
+        self.api_token = config.BRIGHT_DATA_API_TOKEN
+        self.customer_id = config.BRIGHT_DATA_CUSTOMER_ID
+        self.timeout = httpx.Timeout(45.0)
+
+    # ── Internal helpers ──────────────────────────────────────────────────
+
+    def _proxy_url(self, zone: str, password: str) -> str:
+        return (
+            f"http://brd-customer-{self.customer_id}"
+            f"-zone-{zone}:{password}@brd.superproxy.io:22225"
+        )
+
+    def _unlocker_proxies(self) -> dict:
+        url = self._proxy_url(
+            config.BRIGHT_DATA_UNLOCKER_ZONE,
+            config.BRIGHT_DATA_UNLOCKER_PASSWORD,
+        )
+        return {"http://": url, "https://": url}
+
+    def _serp_proxies(self) -> dict:
+        url = self._proxy_url(
+            config.BRIGHT_DATA_SERP_ZONE,
+            config.BRIGHT_DATA_SERP_PASSWORD,
+        )
+        return {"http://": url, "https://": url}
+
+    def _auth_headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.api_token}"}
+
+    # ── Web Unlocker ──────────────────────────────────────────────────────
+
+    async def fetch_url(self, url: str) -> str:
+        """Fetch a URL through Web Unlocker (defeats CAPTCHAs / anti-bot)."""
+        if not config.is_bright_data_configured():
+            return await self._fallback_fetch(url)
+
+        proxies = self._unlocker_proxies()
+        async with httpx.AsyncClient(
+            proxies=proxies, verify=False, timeout=self.timeout
+        ) as client:
+            resp = await client.get(url, follow_redirects=True)
+            resp.raise_for_status()
+            return resp.text
+
+    async def _fallback_fetch(self, url: str) -> str:
+        """Direct fetch (no proxy) used when Bright Data is not configured."""
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+            )
+        }
+        async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
+            resp = await client.get(url, follow_redirects=True)
+            return resp.text
+
+    def extract_text(self, html: str) -> str:
+        """Strip HTML tags and return clean readable text."""
+        soup = BeautifulSoup(html, "lxml")
+        for tag in soup(["script", "style", "nav", "footer", "header"]):
+            tag.decompose()
+        return " ".join(soup.get_text(separator=" ").split())
+
+    # ── SERP API ──────────────────────────────────────────────────────────
+
+    async def serp_search(self, query: str, country: str = "us", num: int = 10) -> list[dict]:
+        """Return structured search results via SERP zone."""
+        if not config.is_bright_data_configured():
+            return await self._fallback_serp(query)
+
+        serp_url = (
+            f"http://www.google.com/search?q={httpx.URL(query=query).query}&num={num}"
+            f"&gl={country.lower()}"
+        )
+        proxies = self._serp_proxies()
+        async with httpx.AsyncClient(
+            proxies=proxies, verify=False, timeout=self.timeout
+        ) as client:
+            resp = await client.get(serp_url, follow_redirects=True)
+            return self._parse_serp_html(resp.text, query)
+
+    def _parse_serp_html(self, html: str, query: str) -> list[dict]:
+        soup = BeautifulSoup(html, "lxml")
+        results = []
+        for g in soup.select("div.g")[:10]:
+            title_tag = g.select_one("h3")
+            link_tag = g.select_one("a[href]")
+            snippet_tag = g.select_one("div[data-sncf], .VwiC3b, span.aCOpRe")
+            if title_tag and link_tag:
+                results.append(
+                    {
+                        "title": title_tag.get_text(),
+                        "url": link_tag["href"],
+                        "snippet": snippet_tag.get_text() if snippet_tag else "",
+                    }
+                )
+        return results
+
+    async def _fallback_serp(self, query: str) -> list[dict]:
+        """DuckDuckGo HTML search as a no-credential fallback."""
+        url = f"https://html.duckduckgo.com/html/?q={httpx.URL(query=query).query}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
+            try:
+                resp = await client.get(url, follow_redirects=True)
+                soup = BeautifulSoup(resp.text, "lxml")
+                results = []
+                for r in soup.select(".result__body")[:10]:
+                    title = r.select_one(".result__title")
+                    link = r.select_one(".result__url")
+                    snippet = r.select_one(".result__snippet")
+                    if title:
+                        results.append(
+                            {
+                                "title": title.get_text(strip=True),
+                                "url": link.get_text(strip=True) if link else "",
+                                "snippet": snippet.get_text(strip=True) if snippet else "",
+                            }
+                        )
+                return results
+            except Exception:
+                return []
+
+    # ── Web Scraper API ───────────────────────────────────────────────────
+
+    async def scraper_api(self, dataset_id: str, params: list[dict]) -> list[dict]:
+        """Trigger a Bright Data Web Scraper API job and wait for results."""
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+            trigger = await client.post(
+                "https://api.brightdata.com/dca/trigger",
+                params={
+                    "dataset_id": dataset_id,
+                    "format": "json",
+                    "uncompressed_webhook": True,
+                },
+                json=params,
+                headers=self._auth_headers(),
+            )
+            trigger.raise_for_status()
+            snapshot_id = trigger.json().get("snapshot_id")
+            if not snapshot_id:
+                return []
+
+            for _ in range(24):
+                await asyncio.sleep(5)
+                status = await client.get(
+                    f"https://api.brightdata.com/dca/dataset/{snapshot_id}",
+                    headers=self._auth_headers(),
+                )
+                if status.status_code == 200:
+                    data = status.json()
+                    if isinstance(data, list):
+                        return data
+            return []
+
+    # ── Scraping Browser ──────────────────────────────────────────────────
+
+    async def scraping_browser_fetch(self, url: str) -> str:
+        """
+        Fetch JavaScript-heavy pages via Scraping Browser.
+        Falls back to Web Unlocker when browser zone is not configured.
+        """
+        if not config.BRIGHT_DATA_BROWSER_PASSWORD:
+            return await self.fetch_url(url)
+
+        browser_url = self._proxy_url(
+            config.BRIGHT_DATA_BROWSER_ZONE,
+            config.BRIGHT_DATA_BROWSER_PASSWORD,
+        )
+        proxies = {"http://": browser_url, "https://": browser_url}
+        async with httpx.AsyncClient(
+            proxies=proxies, verify=False, timeout=self.timeout
+        ) as client:
+            resp = await client.get(url, follow_redirects=True)
+            return resp.text
