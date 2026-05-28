@@ -41,7 +41,8 @@ ANOMALY_SIMILARITY_THRESHOLD = float(os.getenv("ANOMALY_SIMILARITY_THRESHOLD", "
 DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() == "true"
 
 # App
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
+_cors_env = os.getenv("CORS_ORIGINS", "*")
+CORS_ORIGINS = ["*"] if _cors_env == "*" else _cors_env.split(",")
 SECRET_KEY = os.getenv("SECRET_KEY", "nexusintel-dev-secret-change-in-production")
 
 
