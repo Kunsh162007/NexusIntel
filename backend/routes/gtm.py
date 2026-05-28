@@ -39,7 +39,7 @@ async def gtm_search(query: SearchQuery):
     }
 
 
-@router.post("/competitor-analyze")
+@router.get("/competitor-analyze")
 async def analyze_competitor(url: str = Query(..., description="Competitor website URL")):
     """Scrape and analyze a competitor's web presence."""
     from main import bright_data
