@@ -63,8 +63,11 @@ class BrightDataClient:
             )
         }
         async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
-            resp = await client.get(url, follow_redirects=True)
-            return resp.text
+            try:
+                resp = await client.get(url, follow_redirects=True)
+                return resp.text  # return whatever we get; don't raise on 4xx/5xx
+            except Exception:
+                return ""
 
     def extract_text(self, html: str) -> str:
         """Strip HTML tags and return clean readable text."""
@@ -111,24 +114,31 @@ class BrightDataClient:
     async def _fallback_serp(self, query: str) -> list[dict]:
         """DuckDuckGo HTML search as a no-credential fallback."""
         url = f"https://html.duckduckgo.com/html/?q={httpx.URL(query=query).query}"
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+            )
+        }
         async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
             try:
                 resp = await client.get(url, follow_redirects=True)
                 soup = BeautifulSoup(resp.text, "lxml")
                 results = []
-                for r in soup.select(".result__body")[:10]:
-                    title = r.select_one(".result__title")
-                    link = r.select_one(".result__url")
-                    snippet = r.select_one(".result__snippet")
-                    if title:
+                for r in soup.select(".result__body"):
+                    title_el = r.select_one(".result__title a, .result__a")
+                    link_el = r.select_one(".result__url a, .result__url")
+                    snippet_el = r.select_one(".result__snippet")
+                    if title_el:
                         results.append(
                             {
-                                "title": title.get_text(strip=True),
-                                "url": link.get_text(strip=True) if link else "",
-                                "snippet": snippet.get_text(strip=True) if snippet else "",
+                                "title": title_el.get_text(strip=True),
+                                "url": link_el.get_text(strip=True) if link_el else "",
+                                "snippet": snippet_el.get_text(strip=True) if snippet_el else "",
                             }
                         )
+                    if len(results) >= 10:
+                        break
                 return results
             except Exception:
                 return []

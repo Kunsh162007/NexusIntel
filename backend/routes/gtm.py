@@ -45,8 +45,25 @@ async def analyze_competitor(url: str = Query(..., description="Competitor websi
     from main import bright_data
     import config
 
-    html = await bright_data.fetch_url(url)
+    try:
+        html = await bright_data.fetch_url(url)
+    except Exception as e:
+        return {
+            "url": url,
+            "analysis": f"Could not fetch page: {str(e)[:200]}",
+            "raw_text_preview": "",
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
     text = bright_data.extract_text(html)[:5000]
+
+    if not text.strip():
+        return {
+            "url": url,
+            "analysis": "Page returned no readable content (may require JavaScript or login).",
+            "raw_text_preview": "",
+            "timestamp": datetime.utcnow().isoformat(),
+        }
 
     if not config.is_aiml_configured():
         return {
