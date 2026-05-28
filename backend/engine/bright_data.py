@@ -129,48 +129,65 @@ class BrightDataClient:
         return results
 
     async def _fallback_serp(self, query: str) -> list[dict]:
-        """Bing HTML search as a no-credential fallback (more reliable from cloud IPs)."""
-        encoded = httpx.URL(query=query).query
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-        }
-        async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
-            # Try Bing first
-            results = await self._parse_bing(client, encoded)
-            if results:
-                return results
-            # Fall back to DuckDuckGo HTML
-            return await self._parse_ddg(client, encoded)
+        """
+        Reliable fallback using HackerNews + Reddit public JSON APIs.
+        These never block cloud IPs and require no credentials.
+        """
+        from urllib.parse import quote_plus
+        encoded = quote_plus(query)
+        short_timeout = httpx.Timeout(15.0)
+        headers = {"User-Agent": "NexusIntel/1.0 (hackathon research tool)"}
 
-    async def _parse_bing(self, client, encoded_query: str) -> list[dict]:
+        async with httpx.AsyncClient(timeout=short_timeout, headers=headers) as client:
+            hn, reddit = await asyncio.gather(
+                self._search_hackernews(client, encoded),
+                self._search_reddit(client, encoded),
+                return_exceptions=True,
+            )
+            results = []
+            if isinstance(hn, list):
+                results.extend(hn)
+            if isinstance(reddit, list):
+                results.extend(reddit)
+            return results[:10]
+
+    async def _search_hackernews(self, client, encoded_query: str) -> list[dict]:
         try:
             resp = await client.get(
-                f"https://www.bing.com/search?q={encoded_query}&count=10",
-                follow_redirects=True,
+                f"https://hn.algolia.com/api/v1/search?query={encoded_query}"
+                f"&tags=story&hitsPerPage=6"
             )
-            soup = BeautifulSoup(resp.text, "lxml")
             results = []
-            for li in soup.select("li.b_algo"):
-                title_el = li.select_one("h2 a")
-                snippet_el = li.select_one(".b_caption p, .b_algoSlug")
-                if title_el:
+            for hit in resp.json().get("hits", []):
+                if hit.get("title"):
                     results.append({
-                        "title": title_el.get_text(strip=True),
-                        "url": title_el.get("href", ""),
-                        "snippet": snippet_el.get_text(strip=True) if snippet_el else "",
+                        "title": hit["title"],
+                        "url": hit.get("url") or f"https://news.ycombinator.com/item?id={hit.get('objectID')}",
+                        "snippet": f"{hit.get('points', 0)} points · {hit.get('num_comments', 0)} comments on HackerNews",
                     })
-                if len(results) >= 10:
-                    break
             return results
         except Exception:
             return []
 
+    async def _search_reddit(self, client, encoded_query: str) -> list[dict]:
+        try:
+            resp = await client.get(
+                f"https://www.reddit.com/search.json?q={encoded_query}&sort=relevance&limit=6&type=link"
+            )
+            results = []
+            for child in resp.json().get("data", {}).get("children", []):
+                p = child.get("data", {})
+                if p.get("title"):
+                    results.append({
+                        "title": p["title"],
+                        "url": p.get("url") or f"https://reddit.com{p.get('permalink', '')}",
+                        "snippet": (p.get("selftext") or f"r/{p.get('subreddit', '')} · {p.get('score', 0)} upvotes")[:200],
+                    })
+            return results
+        except Exception:
+            return []
+
+    # kept for reference — no longer called
     async def _parse_ddg(self, client, encoded_query: str) -> list[dict]:
         try:
             resp = await client.get(
