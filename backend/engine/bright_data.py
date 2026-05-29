@@ -42,26 +42,44 @@ class BrightDataClient:
     # ── Web Unlocker ──────────────────────────────────────────────────────
 
     async def fetch_url(self, url: str) -> str:
-        """Fetch a URL through Web Unlocker (defeats CAPTCHAs / anti-bot)."""
+        """Fetch a URL through Web Unlocker (defeats CAPTCHAs / anti-bot).
+
+        Falls back to direct fetch when Web Unlocker refuses the URL — e.g.
+        sec.gov which is blocked by the Unlocker's robots.txt policy but is
+        perfectly happy with a direct request that includes a proper UA.
+        """
         if not config.is_bright_data_configured():
             return await self._fallback_fetch(url)
 
         proxies = self._unlocker_proxies()
-        async with httpx.AsyncClient(
-            proxies=proxies, verify=False, timeout=self.timeout
-        ) as client:
-            resp = await client.get(url, follow_redirects=True)
-            resp.raise_for_status()
-            return resp.text
+        try:
+            async with httpx.AsyncClient(
+                proxies=proxies, verify=False, timeout=self.timeout
+            ) as client:
+                resp = await client.get(url, follow_redirects=True)
+                resp.raise_for_status()
+                return resp.text
+        except httpx.HTTPStatusError as exc:
+            # Bright Data returns 4xx with a JSON body for policy refusals
+            # (robots.txt, "bad_endpoint", etc.) — those are recoverable via
+            # direct fetch for sites that don't actually block us.
+            if exc.response is not None and 400 <= exc.response.status_code < 500:
+                return await self._fallback_fetch(url)
+            raise
+
+    def _user_agent_for(self, url: str) -> str:
+        """SEC.gov requires a contactable UA; use it for any .gov site."""
+        if ".gov" in url:
+            return "NexusIntel Research nexusintel-research@example.com (educational hackathon project)"
+        return (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+        )
 
     async def _fallback_fetch(self, url: str) -> str:
-        """Direct fetch (no proxy) used when Bright Data is not configured."""
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
-            )
-        }
+        """Direct fetch (no proxy) used when Bright Data is not configured
+        or when the Web Unlocker refuses the URL by policy."""
+        headers = {"User-Agent": self._user_agent_for(url)}
         async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
             try:
                 resp = await client.get(url, follow_redirects=True)

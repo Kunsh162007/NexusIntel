@@ -35,8 +35,11 @@ async def threat_scan(query: str = Query(...)):
     from main import bright_data
     import config
 
+    # Use a more neutral search — including positive-sounding terms and a
+    # broader date window — so the SERP doesn't pre-bias the LLM toward
+    # finding threats where none exist.
     results = await bright_data.serp_search(
-        f'"{query}" data breach leak vulnerability CVE threat 2024 2025',
+        f'"{query}" security incident OR breach OR CVE OR vulnerability',
         num=10,
     )
 
@@ -74,23 +77,41 @@ async def threat_scan(query: str = Query(...)):
             {
                 "role": "system",
                 "content": (
-                    "You are a cybersecurity threat analyst. Report threats ONLY when the "
-                    "search results actually describe incidents, breaches, CVEs, or "
-                    "vulnerabilities that mention the target. Do not invent threats. "
-                    "If results are off-topic or unrelated, set threats_detected=false "
-                    "with overall_severity='None' and explain in the summary."
+                    "You are a calibrated cybersecurity threat analyst. You are "
+                    "skeptical and conservative — most queries will NOT produce "
+                    "Critical findings. Only escalate severity when the evidence "
+                    "strongly supports it.\n\n"
+                    "Severity rubric — use STRICTLY:\n"
+                    "- Critical: active in-the-wild exploitation of the target RIGHT NOW, "
+                    "  or a current confirmed mass breach with credentials/customer data exposed. "
+                    "  Requires same-day incident response.\n"
+                    "- High: a recent (within 12 months) confirmed major breach, a known "
+                    "  RCE / auth-bypass CVE in a product the target ships, or active "
+                    "  ongoing phishing campaign impersonating the target.\n"
+                    "- Medium: an older breach (>12 months), an isolated CVE in a dependency, "
+                    "  or unconfirmed reports from non-authoritative sources.\n"
+                    "- Low: vague mentions, generic security commentary, or speculative chatter.\n"
+                    "- None: search results don't actually describe any security incident, "
+                    "  or are off-topic / unrelated to the target.\n\n"
+                    "Do not invent threats. If results are off-topic or unrelated, set "
+                    "threats_detected=false, overall_severity='None', and say so in the summary. "
+                    "When mixed evidence is present, overall_severity = the SINGLE HIGHEST "
+                    "individual threat severity, not an inflated aggregate."
                 ),
             },
             {
                 "role": "user",
                 "content": (
-                    f"Query: {query}\n\nSearch results:\n{results_text}\n\n"
-                    "Analyze for security threats ONLY if the results above actually "
-                    "describe security incidents for this target. Return JSON with: "
-                    "threats_detected (bool), threats (list: type+severity+description), "
-                    "overall_severity (Critical/High/Medium/Low/None), "
-                    "recommendations (list), summary (string). "
-                    "If no relevant data, return threats_detected=false with empty threats."
+                    f"Target: {query}\n\nSearch results:\n{results_text}\n\n"
+                    "Apply the severity rubric strictly. Return JSON with: "
+                    "threats_detected (bool), threats (list of objects with type, severity, "
+                    "description — each severity uses the same rubric), "
+                    "overall_severity (Critical/High/Medium/Low/None — must equal the highest "
+                    "individual threat severity, or None if no real threats), "
+                    "recommendations (list of plain strings — empty if no real threats), "
+                    "summary (string explaining the verdict and citing which result IDs "
+                    "supported it). "
+                    "Default to None / Low when in doubt."
                 ),
             },
         ],
