@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { Brain, Bell, X } from 'lucide-react'
+import { Component, useEffect } from 'react'
+import { Brain, Bell, X, AlertOctagon, RefreshCw } from 'lucide-react'
 import { useStore } from './store/useStore'
 import { useWebSocket } from './hooks/useWebSocket'
 import { api } from './api/client'
@@ -10,6 +10,39 @@ import { FinanceDashboard } from './components/FinanceDashboard'
 import { SecurityDashboard } from './components/SecurityDashboard'
 import { VoiceControl } from './components/VoiceControl'
 import clsx from 'clsx'
+
+class ErrorBoundary extends Component {
+  state = { error: null }
+  static getDerivedStateFromError(error) { return { error } }
+  componentDidCatch(error, info) {
+    console.error('ErrorBoundary caught:', error, info)
+  }
+  reset = () => this.setState({ error: null })
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="card border border-security/40 bg-security/5 text-sm">
+          <div className="flex items-start gap-3">
+            <AlertOctagon size={18} className="text-security flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="font-semibold text-security mb-1">Something went wrong rendering this panel.</div>
+              <div className="text-xs text-text-muted font-mono break-all">
+                {String(this.state.error?.message || this.state.error)}
+              </div>
+              <button
+                onClick={this.reset}
+                className="mt-3 inline-flex items-center gap-1 text-xs text-accent hover:underline"
+              >
+                <RefreshCw size={12} /> Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 const IMPACT_COLORS = {
   Critical: 'border-l-red-500 bg-red-900/10',
@@ -99,9 +132,11 @@ export default function App() {
         </div>
 
         {/* Track content */}
-        {activeTrack === 'gtm' && <GTMDashboard />}
-        {activeTrack === 'finance' && <FinanceDashboard />}
-        {activeTrack === 'security' && <SecurityDashboard />}
+        <ErrorBoundary key={activeTrack}>
+          {activeTrack === 'gtm' && <GTMDashboard />}
+          {activeTrack === 'finance' && <FinanceDashboard />}
+          {activeTrack === 'security' && <SecurityDashboard />}
+        </ErrorBoundary>
       </main>
 
       {/* Toast notification */}

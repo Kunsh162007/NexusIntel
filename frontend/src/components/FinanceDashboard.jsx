@@ -3,6 +3,7 @@ import { Search, FileText, TrendingDown, Database, Loader2, ExternalLink } from 
 import { InsightBrief } from './InsightBrief'
 import { useStore } from '../store/useStore'
 import { api } from '../api/client'
+import { toText } from '../utils'
 
 function ResultList({ results, emptyLabel = 'No signals found.' }) {
   if (!results) return null
@@ -67,12 +68,12 @@ function PricingAnomalyScanner() {
           {analysis.anomalies_found && (
             <div className="badge-high inline-flex badge mb-1">Anomalies detected</div>
           )}
-          {analysis.summary && <p className="text-text-secondary text-xs">{analysis.summary}</p>}
+          {analysis.summary && <p className="text-text-secondary text-xs">{toText(analysis.summary)}</p>}
           {analysis.anomalies?.map((a, i) => (
             <div key={i} className="bg-surface-elevated rounded p-2 text-xs">
-              <span className="text-text-primary font-medium">{a.platform}</span>
-              {a.price && <span className="text-finance ml-2">{a.price}</span>}
-              <p className="text-text-muted mt-0.5">{a.context}</p>
+              <span className="text-text-primary font-medium">{toText(a?.platform)}</span>
+              {a?.price != null && <span className="text-finance ml-2">{toText(a.price)}</span>}
+              <p className="text-text-muted mt-0.5">{toText(a?.context)}</p>
             </div>
           ))}
           {!analysis.summary && !analysis.anomalies?.length && (

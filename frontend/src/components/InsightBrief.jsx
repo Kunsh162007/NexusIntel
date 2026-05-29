@@ -1,6 +1,7 @@
 import { AlertTriangle, AlertCircle, Info, CheckCircle, ExternalLink, ChevronDown, ChevronUp, Link } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
+import { toText } from '../utils'
 
 const IMPACT_CONFIG = {
   Critical: { icon: AlertTriangle, class: 'badge-critical', bar: 'bg-red-500' },
@@ -98,7 +99,7 @@ export function InsightBrief({ insight }) {
               {insight.recommendations?.map((rec, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
                   <span className="text-accent mt-0.5 flex-shrink-0">→</span>
-                  {rec}
+                  {toText(rec)}
                 </li>
               ))}
             </ul>

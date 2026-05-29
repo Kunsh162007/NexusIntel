@@ -3,6 +3,7 @@ import { Search, TrendingUp, Users, ExternalLink, Loader2 } from 'lucide-react'
 import { InsightBrief } from './InsightBrief'
 import { useStore } from '../store/useStore'
 import { api } from '../api/client'
+import { toText } from '../utils'
 
 function SearchPanel({ title, placeholder, onSearch, loading, results, searched }) {
   const [query, setQuery] = useState('')
@@ -99,7 +100,7 @@ function CompetitorAnalyzer() {
               <div className="text-xs text-text-muted font-semibold uppercase mb-1">Pricing</div>
               <ul className="space-y-1">
                 {analysis.pricing.map((p, i) => (
-                  <li key={i} className="text-text-secondary font-mono text-xs bg-surface-elevated rounded px-2 py-1">{p}</li>
+                  <li key={i} className="text-text-secondary font-mono text-xs bg-surface-elevated rounded px-2 py-1">{toText(p)}</li>
                 ))}
               </ul>
             </div>
@@ -108,7 +109,15 @@ function CompetitorAnalyzer() {
             <div>
               <div className="text-xs text-text-muted font-semibold uppercase mb-1">Key Messages</div>
               <ul className="list-disc list-inside space-y-1 text-text-secondary text-xs">
-                {analysis.key_messages.map((m, i) => <li key={i}>{m}</li>)}
+                {analysis.key_messages.map((m, i) => <li key={i}>{toText(m)}</li>)}
+              </ul>
+            </div>
+          )}
+          {analysis.products?.length > 0 && (
+            <div>
+              <div className="text-xs text-text-muted font-semibold uppercase mb-1">Products</div>
+              <ul className="list-disc list-inside space-y-1 text-text-secondary text-xs">
+                {analysis.products.map((p, i) => <li key={i}>{toText(p)}</li>)}
               </ul>
             </div>
           )}
@@ -116,13 +125,13 @@ function CompetitorAnalyzer() {
             <div>
               <div className="text-xs text-text-muted font-semibold uppercase mb-1">Hiring Signals</div>
               <ul className="list-disc list-inside space-y-1 text-text-secondary text-xs">
-                {analysis.hiring_signals.map((h, i) => <li key={i}>{h}</li>)}
+                {analysis.hiring_signals.map((h, i) => <li key={i}>{toText(h)}</li>)}
               </ul>
             </div>
           )}
           {analysis.raw && (
             <pre className="text-xs text-text-muted bg-surface-elevated rounded p-2 overflow-x-auto whitespace-pre-wrap">
-              {analysis.raw}
+              {toText(analysis.raw)}
             </pre>
           )}
         </div>

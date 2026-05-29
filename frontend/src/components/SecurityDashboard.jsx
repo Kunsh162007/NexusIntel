@@ -3,6 +3,7 @@ import { Shield, AlertTriangle, Eye, Globe, Loader2, ExternalLink } from 'lucide
 import { InsightBrief } from './InsightBrief'
 import { useStore } from '../store/useStore'
 import { api } from '../api/client'
+import { toText } from '../utils'
 import clsx from 'clsx'
 
 function SeverityBadge({ severity }) {
@@ -60,17 +61,17 @@ function ThreatScanner() {
         <div className="space-y-2">
           {(analysis.overall_severity || analysis.summary) && (
             <div className="flex items-center gap-2">
-              {analysis.overall_severity && <SeverityBadge severity={analysis.overall_severity} />}
-              <span className="text-xs text-text-secondary">{analysis.summary}</span>
+              {analysis.overall_severity && <SeverityBadge severity={toText(analysis.overall_severity)} />}
+              <span className="text-xs text-text-secondary">{toText(analysis.summary)}</span>
             </div>
           )}
           {analysis.threats?.map((t, i) => (
             <div key={i} className="bg-surface-elevated rounded p-2 text-xs space-y-1">
               <div className="flex items-center gap-2">
-                <SeverityBadge severity={t.severity} />
-                <span className="text-text-primary font-medium">{t.type}</span>
+                <SeverityBadge severity={toText(t?.severity)} />
+                <span className="text-text-primary font-medium">{toText(t?.type)}</span>
               </div>
-              <p className="text-text-muted">{t.description}</p>
+              <p className="text-text-muted">{toText(t?.description)}</p>
             </div>
           ))}
           {analysis.recommendations?.length > 0 && (
@@ -79,7 +80,7 @@ function ThreatScanner() {
               <ul className="space-y-1">
                 {analysis.recommendations.map((r, i) => (
                   <li key={i} className="text-xs text-text-secondary flex gap-1.5">
-                    <span className="text-security">→</span>{r}
+                    <span className="text-security">→</span>{toText(r)}
                   </li>
                 ))}
               </ul>
