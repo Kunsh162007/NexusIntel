@@ -5,11 +5,18 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query
 
 from models import SearchQuery, Track
+
+_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/finance", tags=["finance"])
@@ -35,7 +42,7 @@ async def finance_search(query: SearchQuery):
         "query": query.query,
         "track": "finance",
         "results": results,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _now(),
     }
 
 
@@ -51,14 +58,33 @@ async def get_regulatory_filings(company: str | None = Query(None)):
     if company:
         url += f"&company={company}"
 
-    html = await bright_data.fetch_url(url)
-    text = bright_data.extract_text(html)
+    try:
+        html = await bright_data.fetch_url(url)
+        text = bright_data.extract_text(html)
+    except Exception as exc:
+        logger.warning(f"SEC fetch failed: {exc}")
+        return {
+            "source": "SEC EDGAR",
+            "company_filter": company,
+            "content_preview": "",
+            "error": f"Could not fetch SEC EDGAR: {str(exc)[:200]}",
+            "timestamp": _now(),
+        }
+
+    if not text.strip():
+        return {
+            "source": "SEC EDGAR",
+            "company_filter": company,
+            "content_preview": "",
+            "error": "SEC EDGAR returned no readable content (proxy or CAPTCHA may have blocked the request).",
+            "timestamp": _now(),
+        }
 
     return {
         "source": "SEC EDGAR",
         "company_filter": company,
         "content_preview": text[:2000],
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _now(),
     }
 
 
@@ -78,7 +104,7 @@ async def get_pricing_anomalies(product_query: str = Query(...)):
             "product": product_query,
             "results": search_results,
             "anomaly_analysis": "Configure AIML_API_KEY for AI anomaly detection.",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": _now(),
         }
 
     from openai import AsyncOpenAI
@@ -101,8 +127,7 @@ async def get_pricing_anomalies(product_query: str = Query(...)):
         ],
         temperature=0.2,
     )
-    raw = resp.choices[0].message.content or "{}"
-    raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+    raw = _FENCE_RE.sub("", (resp.choices[0].message.content or "{}").strip()).strip()
     try:
         analysis = json.loads(raw)
     except Exception:
@@ -112,7 +137,7 @@ async def get_pricing_anomalies(product_query: str = Query(...)):
         "product": product_query,
         "results": search_results,
         "anomaly_analysis": analysis,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _now(),
     }
 
 
@@ -133,7 +158,7 @@ async def get_alt_data(query: str = Query(...)):
         "company": query,
         "hiring_signals": job_results,
         "traffic_signals": traffic_results,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _now(),
     }
 
 

@@ -58,10 +58,12 @@ function ThreatScanner() {
       </div>
       {analysis && typeof analysis === 'object' && (
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <SeverityBadge severity={analysis.overall_severity} />
-            <span className="text-xs text-text-secondary">{analysis.summary}</span>
-          </div>
+          {(analysis.overall_severity || analysis.summary) && (
+            <div className="flex items-center gap-2">
+              {analysis.overall_severity && <SeverityBadge severity={analysis.overall_severity} />}
+              <span className="text-xs text-text-secondary">{analysis.summary}</span>
+            </div>
+          )}
           {analysis.threats?.map((t, i) => (
             <div key={i} className="bg-surface-elevated rounded p-2 text-xs space-y-1">
               <div className="flex items-center gap-2">
@@ -83,8 +85,12 @@ function ThreatScanner() {
               </ul>
             </div>
           )}
+          {!analysis.summary && !analysis.threats?.length && !analysis.recommendations?.length && (
+            <p className="text-xs text-text-muted italic">Scanner returned no structured threats for this query.</p>
+          )}
         </div>
       )}
+      {typeof analysis === 'string' && <p className="text-xs text-yellow-400">{analysis}</p>}
       {result?.error && <p className="text-security text-xs">{result.error}</p>}
     </div>
   )
@@ -127,7 +133,7 @@ function CredentialChecker() {
           {loading ? <Loader2 size={14} className="animate-spin" /> : 'Check'}
         </button>
       </div>
-      {results?.results?.length > 0 && (
+      {results?.results?.length > 0 ? (
         <ul className="space-y-2 max-h-48 overflow-y-auto">
           {results.results.map((r, i) => (
             <li key={i} className="text-xs border-b border-surface-border pb-1.5 last:border-0">
@@ -139,7 +145,9 @@ function CredentialChecker() {
             </li>
           ))}
         </ul>
-      )}
+      ) : results && !loading ? (
+        <p className="text-xs text-text-muted italic">No public leak mentions found for this domain.</p>
+      ) : null}
     </div>
   )
 }
@@ -178,7 +186,7 @@ function RegulatoryPanel() {
           {loading ? <Loader2 size={14} className="animate-spin" /> : 'Fetch'}
         </button>
       </div>
-      {results?.regulatory_updates?.length > 0 && (
+      {results?.regulatory_updates?.length > 0 ? (
         <ul className="space-y-2 max-h-64 overflow-y-auto">
           {results.regulatory_updates.map((r, i) => (
             <li key={i} className="text-xs border-b border-surface-border pb-1.5 last:border-0">
@@ -190,7 +198,9 @@ function RegulatoryPanel() {
             </li>
           ))}
         </ul>
-      )}
+      ) : results && !loading ? (
+        <p className="text-xs text-text-muted italic">No regulatory updates returned for this region.</p>
+      ) : null}
     </div>
   )
 }

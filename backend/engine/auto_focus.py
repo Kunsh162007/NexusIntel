@@ -10,8 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional
 
 import numpy as np
@@ -21,6 +22,14 @@ import config
 from models import InsightBrief, ImpactLevel, Track, WatchListItem
 
 logger = logging.getLogger(__name__)
+
+_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
+
+
+def _strip_code_fence(raw: str) -> str:
+    """Strip ```json ... ``` fences from an LLM response, if present."""
+    return _FENCE_RE.sub("", raw.strip()).strip()
+
 
 # ── Default watchlist ─────────────────────────────────────────────────────────
 
@@ -199,7 +208,7 @@ class AutoFocusEngine:
             await self._check_all(baseline_pass=False)
 
     async def _check_all(self, baseline_pass: bool):
-        self._last_check = datetime.utcnow()
+        self._last_check = datetime.now(timezone.utc)
         tasks = [
             self._check_item(state, baseline_pass)
             for state in self._states.values()
@@ -214,7 +223,7 @@ class AutoFocusEngine:
             text = self.bd.extract_text(html)[:6000]
             embedding = await self.embedder.embed(text)
 
-            state.last_checked = datetime.utcnow()
+            state.last_checked = datetime.now(timezone.utc)
 
             if state.baseline is None or baseline_pass:
                 state.baseline = embedding
@@ -297,9 +306,7 @@ class AutoFocusEngine:
             temperature=0.3,
         )
 
-        raw = resp.choices[0].message.content or "{}"
-        # Strip markdown code fences if present
-        raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        raw = _strip_code_fence(resp.choices[0].message.content or "{}")
 
         try:
             data = json.loads(raw)
@@ -330,7 +337,7 @@ class AutoFocusEngine:
             recommendations=[
                 "Configure AIML_API_KEY to enable AI-powered analysis",
                 f"Manually review {item.url}",
-                "Assess business impact for the {item.track.upper()} team",
+                f"Assess business impact for the {item.track.upper()} team",
             ],
             track=item.track,
             source_url=item.url,

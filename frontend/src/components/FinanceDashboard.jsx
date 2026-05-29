@@ -4,8 +4,9 @@ import { InsightBrief } from './InsightBrief'
 import { useStore } from '../store/useStore'
 import { api } from '../api/client'
 
-function ResultList({ results }) {
-  if (!results?.length) return null
+function ResultList({ results, emptyLabel = 'No signals found.' }) {
+  if (!results) return null
+  if (!results.length) return <p className="text-xs text-text-muted italic mt-1">{emptyLabel}</p>
   return (
     <ul className="space-y-2 max-h-64 overflow-y-auto mt-2">
       {results.map((r, i) => (
@@ -66,7 +67,7 @@ function PricingAnomalyScanner() {
           {analysis.anomalies_found && (
             <div className="badge-high inline-flex badge mb-1">Anomalies detected</div>
           )}
-          <p className="text-text-secondary text-xs">{analysis.summary}</p>
+          {analysis.summary && <p className="text-text-secondary text-xs">{analysis.summary}</p>}
           {analysis.anomalies?.map((a, i) => (
             <div key={i} className="bg-surface-elevated rounded p-2 text-xs">
               <span className="text-text-primary font-medium">{a.platform}</span>
@@ -74,8 +75,12 @@ function PricingAnomalyScanner() {
               <p className="text-text-muted mt-0.5">{a.context}</p>
             </div>
           ))}
+          {!analysis.summary && !analysis.anomalies?.length && (
+            <p className="text-xs text-text-muted italic">Scanner returned no anomalies for this product.</p>
+          )}
         </div>
       )}
+      {typeof analysis === 'string' && <p className="text-xs text-yellow-400">{analysis}</p>}
       {result?.error && <p className="text-security text-xs">{result.error}</p>}
     </div>
   )
@@ -174,6 +179,11 @@ function FilingsPanel() {
         <pre className="text-xs text-text-secondary bg-surface-elevated rounded p-3 overflow-auto max-h-48 whitespace-pre-wrap">
           {result.content_preview}
         </pre>
+      )}
+      {result && !result.content_preview && (
+        <p className="text-xs text-security">
+          {result.error || 'SEC EDGAR returned no content.'}
+        </p>
       )}
     </div>
   )

@@ -5,11 +5,18 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query
 
 from models import Track
+
+_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/security", tags=["security"])
@@ -38,7 +45,7 @@ async def threat_scan(query: str = Query(...)):
             "query": query,
             "results": results,
             "threat_summary": "Configure AIML_API_KEY for AI threat analysis.",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": _now(),
         }
 
     from openai import AsyncOpenAI
@@ -62,8 +69,7 @@ async def threat_scan(query: str = Query(...)):
         ],
         temperature=0.2,
     )
-    raw = resp.choices[0].message.content or "{}"
-    raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+    raw = _FENCE_RE.sub("", (resp.choices[0].message.content or "{}").strip()).strip()
     try:
         analysis = json.loads(raw)
     except Exception:
@@ -73,7 +79,7 @@ async def threat_scan(query: str = Query(...)):
         "query": query,
         "results": results,
         "threat_analysis": analysis,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _now(),
     }
 
 
@@ -90,7 +96,7 @@ async def credential_check(domain: str = Query(...)):
         "domain": domain,
         "results": results,
         "disclaimer": "Results sourced from public web. For definitive breach info, check haveibeenpwned.com directly.",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _now(),
     }
 
 
@@ -111,7 +117,7 @@ async def brand_monitor(brand: str = Query(...)):
         "brand": brand,
         "impersonation_signals": impersonation,
         "reputation_signals": reputation,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _now(),
     }
 
 
@@ -133,7 +139,7 @@ async def regulatory_changes(region: str = Query("global")):
     return {
         "region": region,
         "regulatory_updates": results,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _now(),
     }
 
 
@@ -143,8 +149,12 @@ async def cve_feed(product: str | None = Query(None)):
     from main import bright_data
 
     url = "https://www.cisa.gov/news-events/cybersecurity-advisories"
-    html = await bright_data.fetch_url(url)
-    text = bright_data.extract_text(html)
+    try:
+        html = await bright_data.fetch_url(url)
+        cisa_text = bright_data.extract_text(html)
+    except Exception as exc:
+        logger.warning(f"CISA fetch failed: {exc}")
+        cisa_text = ""
 
     query = f"CVE vulnerability {product}" if product else "critical CVE vulnerability"
     serp_results = await bright_data.serp_search(f"site:nvd.nist.gov {query} 2025", num=5)
@@ -152,9 +162,10 @@ async def cve_feed(product: str | None = Query(None)):
     return {
         "source": "CISA Advisories + NVD",
         "product_filter": product,
-        "cisa_preview": text[:1500],
+        "cisa_preview": cisa_text[:1500],
+        "cisa_error": None if cisa_text else "Could not fetch CISA advisories (proxy or anti-bot blocked the request).",
         "nvd_results": serp_results,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _now(),
     }
 
 

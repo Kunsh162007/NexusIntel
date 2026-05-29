@@ -1,8 +1,12 @@
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from enum import Enum
 import uuid
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class Track(str, Enum):
@@ -25,7 +29,7 @@ class InsightBrief(BaseModel):
     impact: ImpactLevel
     recommendations: List[str]
     track: Track
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=_utc_now)
     source_url: str = ""
     source_name: str = ""
     similarity_score: float = 0.0
@@ -63,7 +67,7 @@ class CompetitorSignal(BaseModel):
     url: str
     change_type: str
     description: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=_utc_now)
     impact: ImpactLevel = ImpactLevel.MEDIUM
 
 
@@ -73,7 +77,7 @@ class FinancialSignal(BaseModel):
     title: str
     description: str
     impact_score: float
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=_utc_now)
     data: Dict[str, Any] = {}
 
 
@@ -83,7 +87,7 @@ class SecurityAlert(BaseModel):
     description: str
     affected_entities: List[str] = []
     action_required: bool = False
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=_utc_now)
     source_url: str = ""
 
 

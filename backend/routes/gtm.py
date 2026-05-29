@@ -4,11 +4,18 @@ GTM Intelligence track — competitors, pricing, hiring signals, lead enrichment
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query
 
 from models import SearchQuery, Track
+
+_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/gtm", tags=["gtm"])
@@ -35,7 +42,7 @@ async def gtm_search(query: SearchQuery):
         "query": query.query,
         "track": "gtm",
         "results": results,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _now(),
     }
 
 
@@ -52,7 +59,7 @@ async def analyze_competitor(url: str = Query(..., description="Competitor websi
             "url": url,
             "analysis": f"Could not fetch page: {str(e)[:200]}",
             "raw_text_preview": "",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": _now(),
         }
 
     text = bright_data.extract_text(html)[:5000]
@@ -62,7 +69,7 @@ async def analyze_competitor(url: str = Query(..., description="Competitor websi
             "url": url,
             "analysis": "Page returned no readable content (may require JavaScript or login).",
             "raw_text_preview": "",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": _now(),
         }
 
     if not config.is_aiml_configured():
@@ -70,7 +77,7 @@ async def analyze_competitor(url: str = Query(..., description="Competitor websi
             "url": url,
             "analysis": "Configure AIML_API_KEY for AI-powered competitor analysis.",
             "raw_text_preview": text[:500],
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": _now(),
         }
 
     from openai import AsyncOpenAI
@@ -100,8 +107,7 @@ async def analyze_competitor(url: str = Query(..., description="Competitor websi
         temperature=0.2,
     )
 
-    raw = resp.choices[0].message.content or "{}"
-    raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+    raw = _FENCE_RE.sub("", (resp.choices[0].message.content or "{}").strip()).strip()
     import json
     try:
         analysis = json.loads(raw)
@@ -111,7 +117,7 @@ async def analyze_competitor(url: str = Query(..., description="Competitor websi
     return {
         "url": url,
         "analysis": analysis,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _now(),
     }
 
 
@@ -127,7 +133,7 @@ async def get_hiring_signals(company: str = Query(...)):
     return {
         "company": company,
         "hiring_signals": results,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _now(),
     }
 
 

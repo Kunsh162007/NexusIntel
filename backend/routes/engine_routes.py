@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Set
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends
@@ -60,7 +60,7 @@ async def websocket_endpoint(websocket: WebSocket):
         # Send engine status on connect
         from main import engine  # imported here to avoid circular
         await websocket.send_json(
-            {"type": "status", "data": engine.get_status(), "timestamp": datetime.utcnow().isoformat()}
+            {"type": "status", "data": engine.get_status(), "timestamp": datetime.now(timezone.utc).isoformat()}
         )
         # Keep alive
         while True:

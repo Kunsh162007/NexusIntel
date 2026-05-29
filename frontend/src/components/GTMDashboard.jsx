@@ -4,7 +4,7 @@ import { InsightBrief } from './InsightBrief'
 import { useStore } from '../store/useStore'
 import { api } from '../api/client'
 
-function SearchPanel({ title, placeholder, onSearch, loading, results }) {
+function SearchPanel({ title, placeholder, onSearch, loading, results, searched }) {
   const [query, setQuery] = useState('')
 
   return (
@@ -29,7 +29,7 @@ function SearchPanel({ title, placeholder, onSearch, loading, results }) {
           {loading ? <Loader2 size={14} className="animate-spin" /> : 'Search'}
         </button>
       </div>
-      {results?.length > 0 && (
+      {results?.length > 0 ? (
         <ul className="space-y-2 max-h-64 overflow-y-auto">
           {results.map((r, i) => (
             <li key={i} className="text-sm border-b border-surface-border pb-2 last:border-0">
@@ -45,7 +45,9 @@ function SearchPanel({ title, placeholder, onSearch, loading, results }) {
             </li>
           ))}
         </ul>
-      )}
+      ) : searched && !loading ? (
+        <p className="text-xs text-text-muted italic">No results returned — try a broader query.</p>
+      ) : null}
     </div>
   )
 }
@@ -128,8 +130,11 @@ function CompetitorAnalyzer() {
       {result?.error && (
         <p className="text-security text-xs">{result.error}</p>
       )}
-      {analysis === 'Configure AIML_API_KEY for AI-powered competitor analysis.' && (
+      {typeof analysis === 'string' && (
         <p className="text-xs text-yellow-400">{analysis}</p>
+      )}
+      {result && !analysis && !result.error && (
+        <p className="text-xs text-text-muted italic">Analyzer returned no structured data — try a different URL.</p>
       )}
     </div>
   )
@@ -140,8 +145,10 @@ export function GTMDashboard() {
   const trackInsights = insights.filter((i) => i.track === 'gtm')
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchResults, setSearchResults] = useState([])
+  const [searched, setSearched] = useState(false)
   const [hiringLoading, setHiringLoading] = useState(false)
   const [hiringResults, setHiringResults] = useState([])
+  const [hiringSearched, setHiringSearched] = useState(false)
 
   const handleSearch = async (query) => {
     setSearchLoading(true)
@@ -150,7 +157,9 @@ export function GTMDashboard() {
       setSearchResults(data.results || [])
     } catch (e) {
       console.error(e)
+      setSearchResults([])
     } finally {
+      setSearched(true)
       setSearchLoading(false)
     }
   }
@@ -162,7 +171,9 @@ export function GTMDashboard() {
       setHiringResults(data.hiring_signals || [])
     } catch (e) {
       console.error(e)
+      setHiringResults([])
     } finally {
+      setHiringSearched(true)
       setHiringLoading(false)
     }
   }
@@ -198,6 +209,7 @@ export function GTMDashboard() {
           onSearch={handleSearch}
           loading={searchLoading}
           results={searchResults}
+          searched={searched}
         />
         <SearchPanel
           title="Hiring Signal Detector"
@@ -205,6 +217,7 @@ export function GTMDashboard() {
           onSearch={handleHiring}
           loading={hiringLoading}
           results={hiringResults}
+          searched={hiringSearched}
         />
       </section>
     </div>

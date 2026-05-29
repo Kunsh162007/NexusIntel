@@ -31,7 +31,7 @@ class SpeechmaticsClient:
         """
         if not self.api_key:
             logger.info("Speechmatics not configured — returning demo transcript")
-            return "Switch to security track"
+            return "voice transcription unavailable: configure SPEECHMATICS_API_KEY"
 
         headers = {"Authorization": f"Bearer {self.api_key}"}
 

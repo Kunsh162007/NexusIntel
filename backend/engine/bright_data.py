@@ -105,23 +105,52 @@ class BrightDataClient:
 
     def _parse_serp_html(self, html: str, query: str) -> list[dict]:
         soup = BeautifulSoup(html, "lxml")
-        results = []
+        results: list[dict] = []
+        seen: set[str] = set()
 
-        # Modern Google HTML structure (2024-2025)
-        for g in soup.select("div.g, div[data-hveid] div.g, div.Gx5Zad"):
-            title_tag = g.select_one("h3")
-            # Get the first external link (skip internal google.com hrefs)
+        # Modern Google HTML structures (selectors change frequently)
+        candidate_selectors = [
+            "div.g",
+            "div[data-hveid] div.g",
+            "div.Gx5Zad",
+            "div.tF2Cxc",
+            "div.MjjYud",
+            "div.kvH3mc",
+            "div[jscontroller] h3",
+        ]
+        candidates = []
+        for sel in candidate_selectors:
+            candidates.extend(soup.select(sel))
+
+        # As a last resort, walk every <h3> on the page
+        if not candidates:
+            candidates = soup.find_all("h3")
+
+        for node in candidates:
+            block = node if node.name != "h3" else (node.find_parent("div") or node)
+            title_tag = block.select_one("h3") if block.name != "h3" else block
             link_tag = None
-            for a in g.select("a[href]"):
+            for a in block.find_all("a", href=True):
                 href = a.get("href", "")
+                if href.startswith("/url?"):
+                    # Google redirector — extract the real URL
+                    from urllib.parse import urlparse, parse_qs
+                    qs = parse_qs(urlparse(href).query)
+                    href = (qs.get("q") or qs.get("url") or [""])[0]
                 if href.startswith("http") and "google.com" not in href:
-                    link_tag = a
+                    link_tag = {"href": href}
                     break
-            snippet_tag = g.select_one(".VwiC3b, div[data-sncf], span.aCOpRe, .s3v9rd")
+            snippet_tag = block.select_one(
+                ".VwiC3b, div[data-sncf], span.aCOpRe, .s3v9rd, .lEBKkf"
+            )
             if title_tag and link_tag:
+                url = link_tag["href"]
+                if url in seen:
+                    continue
+                seen.add(url)
                 results.append({
                     "title": title_tag.get_text(strip=True),
-                    "url": link_tag["href"],
+                    "url": url,
                     "snippet": snippet_tag.get_text(strip=True) if snippet_tag else "",
                 })
             if len(results) >= 10:

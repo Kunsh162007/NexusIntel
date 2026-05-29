@@ -1,4 +1,9 @@
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// When VITE_API_URL is set, use it directly. When it's an empty string
+// (e.g. the Docker build), fall through to relative URLs which nginx proxies
+// to the backend container. Only default to localhost:8000 when the variable
+// is genuinely undefined (i.e. running `npm run dev` standalone).
+const RAW = import.meta.env.VITE_API_URL
+const BASE = RAW === undefined ? 'http://localhost:8000' : RAW
 
 async function request(path, options = {}) {
   const url = `${BASE}${path}`
@@ -67,4 +72,10 @@ export const api = {
     }),
 }
 
-export const WS_URL = BASE.replace(/^http/, 'ws') + '/api/engine/ws'
+export const WS_URL = (() => {
+  if (BASE) return BASE.replace(/^http/, 'ws') + '/api/engine/ws'
+  // Relative deployment — derive from window.location so we reach the
+  // same host that served the page (which nginx proxies to backend).
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  return `${proto}://${window.location.host}/api/engine/ws`
+})()
