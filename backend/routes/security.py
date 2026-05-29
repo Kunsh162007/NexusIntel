@@ -48,6 +48,22 @@ async def threat_scan(query: str = Query(...)):
             "timestamp": _now(),
         }
 
+    # Short-circuit: empty SERP results would otherwise let the LLM
+    # invent threats for an unknown brand.
+    if not results:
+        return {
+            "query": query,
+            "results": [],
+            "threat_analysis": {
+                "threats_detected": False,
+                "threats": [],
+                "overall_severity": "None",
+                "recommendations": [],
+                "summary": f"No public threat reports found for '{query}'. Either the entity has no documented security incidents or the search returned no useful results.",
+            },
+            "timestamp": _now(),
+        }
+
     from openai import AsyncOpenAI
     client = AsyncOpenAI(api_key=config.AIML_API_KEY, base_url=config.AIML_API_BASE_URL)
     results_text = "\n".join([f"- {r['title']}: {r['snippet']}" for r in results[:6]])
@@ -55,15 +71,26 @@ async def threat_scan(query: str = Query(...)):
     resp = await client.chat.completions.create(
         model=config.AIML_MODEL,
         messages=[
-            {"role": "system", "content": "You are a cybersecurity threat analyst."},
+            {
+                "role": "system",
+                "content": (
+                    "You are a cybersecurity threat analyst. Report threats ONLY when the "
+                    "search results actually describe incidents, breaches, CVEs, or "
+                    "vulnerabilities that mention the target. Do not invent threats. "
+                    "If results are off-topic or unrelated, set threats_detected=false "
+                    "with overall_severity='None' and explain in the summary."
+                ),
+            },
             {
                 "role": "user",
                 "content": (
                     f"Query: {query}\n\nSearch results:\n{results_text}\n\n"
-                    "Analyze for security threats. Return JSON with: "
+                    "Analyze for security threats ONLY if the results above actually "
+                    "describe security incidents for this target. Return JSON with: "
                     "threats_detected (bool), threats (list: type+severity+description), "
                     "overall_severity (Critical/High/Medium/Low/None), "
-                    "recommendations (list), summary (string)."
+                    "recommendations (list), summary (string). "
+                    "If no relevant data, return threats_detected=false with empty threats."
                 ),
             },
         ],

@@ -107,6 +107,22 @@ async def get_pricing_anomalies(product_query: str = Query(...)):
             "timestamp": _now(),
         }
 
+    # Short-circuit: no SERP results means there's nothing real to analyze.
+    # Without this the LLM will happily hallucinate "anomalies" for a query
+    # like "garbledfakeproductxyz".
+    if not search_results:
+        return {
+            "product": product_query,
+            "results": [],
+            "anomaly_analysis": {
+                "anomalies_found": False,
+                "anomalies": [],
+                "summary": f"No public pricing data found for '{product_query}'. The product name may be misspelled or have no online retail presence.",
+                "impact": "Low",
+            },
+            "timestamp": _now(),
+        }
+
     from openai import AsyncOpenAI
     client = AsyncOpenAI(api_key=config.AIML_API_KEY, base_url=config.AIML_API_BASE_URL)
     results_text = "\n".join([f"- {r['title']}: {r['snippet']}" for r in search_results[:5]])
@@ -114,14 +130,25 @@ async def get_pricing_anomalies(product_query: str = Query(...)):
     resp = await client.chat.completions.create(
         model=config.AIML_MODEL,
         messages=[
-            {"role": "system", "content": "You are a market analyst. Detect pricing anomalies."},
+            {
+                "role": "system",
+                "content": (
+                    "You are a market analyst. Detect pricing anomalies ONLY when the "
+                    "search results actually mention the specified product with concrete "
+                    "prices or discounts. Do not invent data. If results are off-topic, "
+                    "missing prices, or unrelated to the product, set anomalies_found=false "
+                    "and explain why in the summary."
+                ),
+            },
             {
                 "role": "user",
                 "content": (
                     f"Product: {product_query}\n\nSearch results:\n{results_text}\n\n"
-                    "Identify any pricing anomalies (unusual discounts, price cuts, promotions). "
+                    "Identify any pricing anomalies (unusual discounts, price cuts, promotions) "
+                    "ONLY if the results above contain real pricing for this exact product. "
                     "Return JSON: anomalies_found (bool), anomalies (list of dicts with platform+price+context), "
-                    "summary (string), impact (High/Medium/Low)."
+                    "summary (string), impact (High/Medium/Low). "
+                    "If no relevant data, return anomalies_found=false with an empty anomalies list."
                 ),
             },
         ],

@@ -90,16 +90,25 @@ async def analyze_competitor(url: str = Query(..., description="Competitor websi
         messages=[
             {
                 "role": "system",
-                "content": "You are a GTM analyst. Extract competitor intelligence as JSON.",
+                "content": (
+                    "You are a GTM analyst. Extract competitor intelligence as JSON. "
+                    "Every list item MUST be a plain string, not an object. "
+                    "Only include facts that appear verbatim or near-verbatim in the page text. "
+                    "If a field has no supporting evidence on the page, return an empty list for it. "
+                    "Do not invent prices, products, messages, or job titles."
+                ),
             },
             {
                 "role": "user",
                 "content": (
-                    f"Analyze this competitor page and extract:\n"
-                    f"- pricing (list of plans/prices found)\n"
-                    f"- key_messages (their main value props)\n"
-                    f"- products (list of products/features)\n"
-                    f"- hiring_signals (any job openings or team expansion hints)\n\n"
+                    "Analyze this competitor page and extract the following keys. "
+                    "Each value must be a list of plain strings (not objects):\n"
+                    "- pricing: list of pricing tier strings, e.g. 'Pro: $20/mo'\n"
+                    "- key_messages: list of value-prop sentences\n"
+                    "- products: list of product/feature name strings\n"
+                    "- hiring_signals: list of job-opening strings\n\n"
+                    "If the page is empty, error, or unrelated to a product/company, "
+                    "return all fields as empty lists.\n\n"
                     f"Page content:\n{text}"
                 ),
             },
