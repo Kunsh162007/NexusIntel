@@ -1,9 +1,12 @@
 import httpx
 import json
 import asyncio
+import logging
 from typing import Optional
 from bs4 import BeautifulSoup
 import config
+
+logger = logging.getLogger(__name__)
 
 
 class BrightDataClient:
@@ -42,12 +45,11 @@ class BrightDataClient:
     # ── Web Unlocker ──────────────────────────────────────────────────────
 
     async def fetch_url(self, url: str) -> str:
-        """Fetch a URL through Web Unlocker (defeats CAPTCHAs / anti-bot).
+        """Fetch a URL through Web Unlocker, falling back to a direct fetch
+        whenever the proxy refuses, errors, or returns an unusable response.
 
-        Falls back to direct fetch when Web Unlocker refuses the URL — e.g.
-        sec.gov which is blocked by the Unlocker's robots.txt policy but is
-        perfectly happy with a direct request that includes a proper UA.
-        """
+        Never raises — returns at worst an empty string. Callers should
+        treat empty text as "site blocked us"."""
         if not config.is_bright_data_configured():
             return await self._fallback_fetch(url)
 
@@ -57,15 +59,20 @@ class BrightDataClient:
                 proxies=proxies, verify=False, timeout=self.timeout
             ) as client:
                 resp = await client.get(url, follow_redirects=True)
-                resp.raise_for_status()
+                # Bright Data returns 4xx for policy refusals (robots.txt,
+                # bad_endpoint) AND tunnels target-site responses including
+                # 403/429 Cloudflare blocks. In every error case, try direct.
+                if resp.status_code >= 400:
+                    logger.info(
+                        "Bright Data returned %s for %s — trying direct fetch",
+                        resp.status_code, url,
+                    )
+                    return await self._fallback_fetch(url)
                 return resp.text
-        except httpx.HTTPStatusError as exc:
-            # Bright Data returns 4xx with a JSON body for policy refusals
-            # (robots.txt, "bad_endpoint", etc.) — those are recoverable via
-            # direct fetch for sites that don't actually block us.
-            if exc.response is not None and 400 <= exc.response.status_code < 500:
-                return await self._fallback_fetch(url)
-            raise
+        except (httpx.RequestError, httpx.HTTPError) as exc:
+            # ProxyError, ConnectError, TimeoutException, etc.
+            logger.info("Bright Data exception for %s: %s — trying direct fetch", url, exc)
+            return await self._fallback_fetch(url)
 
     def _user_agent_for(self, url: str) -> str:
         """SEC.gov requires a contactable UA; use it for any .gov site."""
