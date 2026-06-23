@@ -59,7 +59,7 @@ function NotificationToast() {
   return (
     <div
       className={clsx(
-        'fixed bottom-5 right-5 z-50 w-80 card border-l-4 shadow-xl animate-slide-in',
+        'fixed bottom-5 right-5 left-5 sm:left-auto z-50 sm:w-80 card border-l-4 shadow-xl animate-slide-in',
         IMPACT_COLORS[latest.impact] || IMPACT_COLORS.Medium
       )}
     >
@@ -144,7 +144,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-surface-border mt-12 py-4">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between text-xs text-text-muted">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center gap-1 sm:gap-4 sm:justify-between text-xs text-text-muted text-center">
           <span>NexusIntel AI · Web Data UNLOCKED Hackathon · Bright Data × lablab.ai</span>
           <span className="font-mono">GTM · Finance · Security</span>
         </div>
